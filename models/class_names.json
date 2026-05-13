@@ -1,0 +1,9 @@
+{
+  "note": "Générer ce fichier après avoir chargé le dataset avec src/data_preprocessing.py::get_class_indices()",
+  "example": {
+    "0": "air hockey",
+    "1": "ampute football",
+    "2": "archery",
+    "99": "wrestling"
+  }
+}
