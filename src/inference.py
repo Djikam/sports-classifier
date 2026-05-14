@@ -1,8 +1,17 @@
 """
 Module d'inférence : prediction sur une seule image.
 """
+import os
+import sys
 import numpy as np
 from PIL import Image
+
+# Ajoute le dossier parent au path (pour les imports locaux)
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
+
 from src.model import load_model
 from src.utils import preprocess_image, decode_predictions, get_class_names
 
