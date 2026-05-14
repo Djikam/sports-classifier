@@ -104,7 +104,7 @@ if page == "Classification":
         with col1:
             st.subheader("📸 Image uploadée")
             image = Image.open(uploaded_file)
-            st.image(image, use_container_width=True)
+            st.image(image, use_column_width=True)
             st.info(f"**Dimensions** : {image.size[0]}×{image.size[1]} pixels | **Mode** : {image.mode}")
 
         with col2:
