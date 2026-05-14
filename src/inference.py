@@ -1,5 +1,5 @@
 """
-Module d'inférence : prédiction sur une seule image.
+Module d'inférence : prediction sur une seule image.
 """
 import numpy as np
 from PIL import Image
@@ -17,12 +17,18 @@ class SportsClassifier:
         self._load()
 
     def _load(self):
-        """Charge le modèle et les noms de classes."""
+        """Charge le modele et les noms de classes."""
         self.model = load_model()
         self.class_names = get_class_names()
+
+        # Vérifie qu'on a bien 100 classes
+        if len(self.class_names) != 100:
+            print(f"⚠️ Attention: {len(self.class_names)} classes trouvées, 100 attendues")
+
+        # Si toujours vide (ne devrait plus arriver), crée des noms génériques
         if not self.class_names:
-            # Fallback si pas de données locales
             self.class_names = [f"Sport_{i}" for i in range(100)]
+            print("❌ ERREUR: Aucune classe trouvée, noms génériques utilisés")
 
     def predict(self, image, top_k=5):
         """
