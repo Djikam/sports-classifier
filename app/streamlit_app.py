@@ -41,7 +41,7 @@ st.markdown("""
 
 # Sidebar
 st.sidebar.title("🏅 Navigation")
-page = st.sidebar.radio("", ["Classification", "À propos"])
+page = st.sidebar.radio("", ["Classification", "À propos"], label_visibility="collapsed")
 
 
 # Chargement du modèle (mis en cache)
@@ -51,7 +51,7 @@ def load_classifier():
         return SportsClassifier()
 
 
-# Gestion robuste du chargement avec affichage d'aide en cas d'erreur
+# Gestion robuste du chargement
 classifier = None
 model_loaded = False
 load_error = None
@@ -63,38 +63,27 @@ except Exception as e:
     load_error = str(e)
     st.error(f"❌ Erreur de chargement du modèle : {e}")
 
-    # Affiche un guide de dépannage contextuel
-    if "html" in load_error.lower() or "drive" in load_error.lower() or "download" in load_error.lower():
+    if "keras_zip" in load_error.lower():
         st.markdown("""
-        ### 🔧 Problème de téléchargement Google Drive
+        ### 🔧 Format .keras détecté
+        Le fichier est au format ZIP natif Keras 3. 
+        Le chargement des poids sur architecture reconstruite a échoué.
 
-        Le modèle n'a pas pu être téléchargé depuis Google Drive.
-
-        **Solutions :**
-        - Vérifiez que le fichier `best_model.h5` est bien sur Drive
-        - Vérifiez que le lien est en mode **"Tous ceux qui ont le lien"** (Partager → Accès général)
-        - Essayez de mettre à jour `MODEL_DRIVE_URL` dans `src/model.py`
-        - Alternative : hébergez sur [GitHub Releases](https://docs.github.com/en/repositories/releasing-projects-on-github/about-releases)
+        **Solution :** Convertissez le modèle en .h5 :
+        ```python
+        model = tf.keras.models.load_model("best_model.keras")
+        model.save("best_model.h5")
+        ```
         """)
-    elif "hdf5" in load_error.lower() or "signature" in load_error.lower():
+    elif "download" in load_error.lower() or "url" in load_error.lower():
         st.markdown("""
-        ### 🔧 Problème de format de fichier
-
-        Le fichier téléchargé n'est pas un modèle HDF5 (.h5) valide.
-
-        **Solutions :**
-        - Vérifiez que le fichier sur Drive est bien `best_model.h5` (pas .keras)
-        - Supprimez le fichier local corrompu : supprimez `models/best_model.h5`
-        - Relancez l'application pour retélécharger
+        ### 🔧 Problème de téléchargement
+        Vérifiez l'URL du modèle dans les variables d'environnement Render.
         """)
     else:
         st.markdown("""
-        ### 🔧 Erreur de chargement du modèle
-
-        **Solutions :**
-        - Vérifiez que TensorFlow est installé : `pip install tensorflow`
-        - Vérifiez les logs dans le terminal
-        - Essayez de reconstruire le modèle avec `build_model()` dans `src/model.py`
+        ### 🔧 Erreur de chargement
+        Vérifiez les logs pour plus de détails.
         """)
 
 
