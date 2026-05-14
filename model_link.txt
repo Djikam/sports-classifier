@@ -1,3 +1,2 @@
 # Lien de déploiement Render
-# Remplacer par l'URL générée après déploiement
-https://ton-app.onrender.com
+https://sports-classifier-rqst.onrender.com/
