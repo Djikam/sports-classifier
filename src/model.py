@@ -1,11 +1,12 @@
 """
-Gestion du modèle : architecture, chargement, téléchargement.
+Gestion du modele : architecture, chargement, telechargement.
 Accepte les deux formats : .h5 (HDF5) et .keras (ZIP Keras 3)
 """
 import os
 import zipfile
 import json
 import urllib.request
+import shutil
 import tensorflow as tf
 from tensorflow.keras.applications import MobileNetV2
 from tensorflow.keras.layers import GlobalAveragePooling2D, Dense, Dropout
@@ -13,7 +14,7 @@ from tensorflow.keras.models import Model
 
 from src.utils import MODELS_DIR, NUM_CLASSES, IMG_SIZE
 
-# URL du modèle (Google Drive ou GitHub Releases)
+# URL du modele (Google Drive ou GitHub Releases)
 MODEL_URL = os.environ.get(
     "MODEL_URL",
     "https://drive.google.com/uc?id=1S46qADbZHvMNOf13_1-WLvhLGnY4RqN-&export=download&confirm=t"
@@ -25,7 +26,7 @@ MODEL_PATH_KERAS = os.path.join(MODELS_DIR, "best_model.keras")
 
 
 def diagnose_model_file(path):
-    """Diagnostic du fichier modèle."""
+    """Diagnostic du fichier modele."""
     if not os.path.exists(path):
         return None, 0
 
@@ -44,23 +45,23 @@ def diagnose_model_file(path):
 
 
 def download_model():
-    """Télécharge le modèle depuis l'URL configurée."""
+    """Telecharge le modele depuis l'URL configuree."""
 
     print(f"🔧 URL: {MODEL_URL[:60]}...")
 
-    # Vérifie si un fichier valide existe déjà
+    # Verifie si un fichier valide existe deja
     for path, expected in [(MODEL_PATH_H5, "h5"), (MODEL_PATH_KERAS, "keras_zip")]:
         if os.path.exists(path):
             fmt, size = diagnose_model_file(path)
             if fmt == expected:
-                print(f"✅ {expected.upper()} déjà présent ({size/1024/1024:.1f} MB)")
+                print(f"✅ {expected.upper()} deja present ({size/1024/1024:.1f} MB)")
                 return path, fmt
             else:
                 print(f"⚠️ {path} invalide ({fmt}), suppression...")
                 os.remove(path)
 
     os.makedirs(MODELS_DIR, exist_ok=True)
-    print(f"🚀 Téléchargement...")
+    print(f"🚀 Telechargement...")
 
     try:
         headers = {'User-Agent': 'Mozilla/5.0'}
@@ -75,11 +76,11 @@ def download_model():
             f.write(data)
 
         fmt, size = diagnose_model_file(temp_path)
-        print(f"📦 Reçu: {fmt} ({size/1024/1024:.1f} MB)")
+        print(f"📦 Recu: {fmt} ({size/1024/1024:.1f} MB)")
 
         if fmt == "html_error":
             os.remove(temp_path)
-            print("⚠️ HTML reçu, tentative avec confirmation...")
+            print("⚠️ HTML recu, tentative avec confirmation...")
             return download_with_confirmation()
 
         if fmt == "h5":
@@ -90,7 +91,7 @@ def download_model():
             return MODEL_PATH_KERAS, "keras_zip"
         else:
             os.remove(temp_path)
-            raise ValueError(f"Format non supporté: {fmt}")
+            raise ValueError(f"Format non supporte: {fmt}")
 
     except Exception as e:
         print(f"❌ Erreur: {e}")
@@ -98,12 +99,12 @@ def download_model():
 
 
 def download_with_confirmation():
-    """Gère la confirmation Google Drive."""
+    """Gere la confirmation Google Drive."""
     import re
 
     match = re.search(r'id=([^&]+)', MODEL_URL)
     if not match:
-        raise ValueError("ID non trouvé")
+        raise ValueError("ID non trouve")
 
     file_id = match.group(1)
     confirm_url = f"https://drive.google.com/uc?export=download&confirm=t&id={file_id}"
@@ -135,7 +136,7 @@ def download_with_confirmation():
 
 
 def build_model(num_classes=NUM_CLASSES, img_size=IMG_SIZE):
-    """Construit le modèle avec Transfer Learning."""
+    """Construit le modele avec Transfer Learning."""
     base_model = MobileNetV2(
         weights='imagenet',
         include_top=False,
@@ -160,7 +161,7 @@ def build_model(num_classes=NUM_CLASSES, img_size=IMG_SIZE):
 
 
 def load_model_from_keras_zip(path):
-    """Charge un modèle .keras (ZIP) en reconstruisant l'architecture + poids."""
+    """Charge un modele .keras (ZIP) en reconstruisant l'architecture + poids."""
     print("📦 Extraction du ZIP .keras...")
 
     extract_dir = os.path.join(MODELS_DIR, "_temp_extract")
@@ -190,9 +191,9 @@ def load_model_from_keras_zip(path):
 
         if weights_file and os.path.exists(weights_file):
             model.load_weights(weights_file)
-            print("✅ Poids chargés")
+            print("✅ Poids charges")
         else:
-            print("⚠️ Poids non trouvés, modèle vierge")
+            print("⚠️ Poids non trouves, modele vierge")
 
         model.compile(
             optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
@@ -202,12 +203,11 @@ def load_model_from_keras_zip(path):
         return model
 
     finally:
-        import shutil
         shutil.rmtree(extract_dir, ignore_errors=True)
 
 
 def load_model():
-    """Charge le modèle, gère .h5 et .keras"""
+    """Charge le modele, gere .h5 et .keras"""
 
     # Cherche un fichier existant
     path = None
@@ -222,12 +222,11 @@ def load_model():
         if fmt == "keras_zip":
             path = MODEL_PATH_KERAS
 
-    # Si aucun fichier valide, télécharge
+    # Si aucun fichier valide, telecharge
     if path is None:
         path, fmt = download_model()
 
-    print(f"
-📁 Fichier: {path}")
+    print(f"\n📁 Fichier: {path}")
     print(f"📦 Format: {fmt}")
 
     # Chargement selon le format
@@ -239,7 +238,7 @@ def load_model():
             loss='categorical_crossentropy',
             metrics=['accuracy']
         )
-        print("✅ Modèle .h5 chargé")
+        print("✅ Modele .h5 charge")
         return model
 
     elif fmt == "keras_zip":
@@ -247,4 +246,4 @@ def load_model():
         return load_model_from_keras_zip(path)
 
     else:
-        raise ValueError(f"Format non géré: {fmt}")
+        raise ValueError(f"Format non gere: {fmt}")
