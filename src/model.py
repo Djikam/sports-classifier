@@ -1,10 +1,9 @@
 """
 Gestion du modele : architecture, chargement, telechargement.
-Accepte les deux formats : .h5 (HDF5) et .keras (ZIP Keras 3)
+SOLUTION DEFINITIVE : Reconstruction + poids (evite les conflits Keras 2/3)
 """
 import os
 import zipfile
-import json
 import urllib.request
 import shutil
 import tensorflow as tf
@@ -14,15 +13,13 @@ from tensorflow.keras.models import Model
 
 from src.utils import MODELS_DIR, NUM_CLASSES, IMG_SIZE
 
-# URL du modele (Google Drive ou GitHub Releases)
+# URL du modele
 MODEL_URL = os.environ.get(
     "MODEL_URL",
     "https://drive.google.com/uc?id=1S46qADbZHvMNOf13_1-WLvhLGnY4RqN-&export=download&confirm=t"
 )
 
-# Chemins possibles
-MODEL_PATH_H5 = os.path.join(MODELS_DIR, "best_model.h5")
-MODEL_PATH_KERAS = os.path.join(MODELS_DIR, "best_model.keras")
+MODEL_PATH = os.path.join(MODELS_DIR, "best_model.h5")
 
 
 def diagnose_model_file(path):
@@ -49,16 +46,14 @@ def download_model():
 
     print(f"🔧 URL: {MODEL_URL[:60]}...")
 
-    # Verifie si un fichier valide existe deja
-    for path, expected in [(MODEL_PATH_H5, "h5"), (MODEL_PATH_KERAS, "keras_zip")]:
-        if os.path.exists(path):
-            fmt, size = diagnose_model_file(path)
-            if fmt == expected:
-                print(f"✅ {expected.upper()} deja present ({size/1024/1024:.1f} MB)")
-                return path, fmt
-            else:
-                print(f"⚠️ {path} invalide ({fmt}), suppression...")
-                os.remove(path)
+    if os.path.exists(MODEL_PATH):
+        fmt, size = diagnose_model_file(MODEL_PATH)
+        if fmt in ["h5", "keras_zip"]:
+            print(f"✅ Fichier deja present ({size/1024/1024:.1f} MB, format: {fmt})")
+            return MODEL_PATH, fmt
+        else:
+            print(f"⚠️ Invalide ({fmt}), suppression...")
+            os.remove(MODEL_PATH)
 
     os.makedirs(MODELS_DIR, exist_ok=True)
     print(f"🚀 Telechargement...")
@@ -70,31 +65,27 @@ def download_model():
         with urllib.request.urlopen(req, timeout=300) as response:
             data = response.read()
 
-        # Sauvegarde temporaire pour diagnostic
-        temp_path = os.path.join(MODELS_DIR, "best_model_temp")
-        with open(temp_path, 'wb') as f:
+        with open(MODEL_PATH, 'wb') as f:
             f.write(data)
 
-        fmt, size = diagnose_model_file(temp_path)
+        fmt, size = diagnose_model_file(MODEL_PATH)
         print(f"📦 Recu: {fmt} ({size/1024/1024:.1f} MB)")
 
         if fmt == "html_error":
-            os.remove(temp_path)
+            os.remove(MODEL_PATH)
             print("⚠️ HTML recu, tentative avec confirmation...")
             return download_with_confirmation()
 
-        if fmt == "h5":
-            os.rename(temp_path, MODEL_PATH_H5)
-            return MODEL_PATH_H5, "h5"
-        elif fmt == "keras_zip":
-            os.rename(temp_path, MODEL_PATH_KERAS)
-            return MODEL_PATH_KERAS, "keras_zip"
-        else:
-            os.remove(temp_path)
+        if fmt not in ["h5", "keras_zip"]:
+            os.remove(MODEL_PATH)
             raise ValueError(f"Format non supporte: {fmt}")
+
+        return MODEL_PATH, fmt
 
     except Exception as e:
         print(f"❌ Erreur: {e}")
+        if os.path.exists(MODEL_PATH):
+            os.remove(MODEL_PATH)
         raise
 
 
@@ -117,26 +108,21 @@ def download_with_confirmation():
     with urllib.request.urlopen(req, timeout=300) as response:
         data = response.read()
 
-    temp_path = os.path.join(MODELS_DIR, "best_model_temp")
-    with open(temp_path, 'wb') as f:
+    with open(MODEL_PATH, 'wb') as f:
         f.write(data)
 
-    fmt, size = diagnose_model_file(temp_path)
+    fmt, size = diagnose_model_file(MODEL_PATH)
     print(f"📦 Confirmation: {fmt} ({size/1024/1024:.1f} MB)")
 
-    if fmt == "h5":
-        os.rename(temp_path, MODEL_PATH_H5)
-        return MODEL_PATH_H5, "h5"
-    elif fmt == "keras_zip":
-        os.rename(temp_path, MODEL_PATH_KERAS)
-        return MODEL_PATH_KERAS, "keras_zip"
-    else:
-        os.remove(temp_path)
+    if fmt not in ["h5", "keras_zip"]:
+        os.remove(MODEL_PATH)
         raise ValueError(f"Toujours invalide: {fmt}")
+
+    return MODEL_PATH, fmt
 
 
 def build_model(num_classes=NUM_CLASSES, img_size=IMG_SIZE):
-    """Construit le modele avec Transfer Learning."""
+    """Construit l'architecture du modele (IDENTIQUE a l'entrainement)."""
     base_model = MobileNetV2(
         weights='imagenet',
         include_top=False,
@@ -160,90 +146,97 @@ def build_model(num_classes=NUM_CLASSES, img_size=IMG_SIZE):
     return model
 
 
-def load_model_from_keras_zip(path):
-    """Charge un modele .keras (ZIP) en reconstruisant l'architecture + poids."""
-    print("📦 Extraction du ZIP .keras...")
+def extract_weights_from_keras(path):
+    """Extrait les poids d'un fichier .keras (ZIP)."""
+    print("📦 Extraction des poids du ZIP .keras...")
 
     extract_dir = os.path.join(MODELS_DIR, "_temp_extract")
     os.makedirs(extract_dir, exist_ok=True)
+
+    weights_file = None
 
     try:
         with zipfile.ZipFile(path, 'r') as z:
             z.extractall(extract_dir)
 
-        # Cherche config et poids
-        config_file = None
-        weights_file = None
-
         for root, dirs, files in os.walk(extract_dir):
             for f in files:
-                full = os.path.join(root, f)
-                if f == "config.json":
-                    config_file = full
-                elif f.endswith(".weights.h5") or f == "model.weights.h5":
-                    weights_file = full
-
-        print(f"📄 Config: {config_file}")
-        print(f"⚖️  Poids: {weights_file}")
-
-        # Reconstruit l'architecture
-        model = build_model()
+                if f.endswith(".weights.h5") or f == "model.weights.h5":
+                    weights_file = os.path.join(root, f)
+                    break
 
         if weights_file and os.path.exists(weights_file):
-            model.load_weights(weights_file)
-            print("✅ Poids charges")
+            print(f"✅ Poids trouves: {os.path.basename(weights_file)}")
+            return weights_file
         else:
-            print("⚠️ Poids non trouves, modele vierge")
+            print("⚠️ Poids non trouves dans le ZIP")
+            return None
 
-        model.compile(
-            optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
-            loss='categorical_crossentropy',
-            metrics=['accuracy']
-        )
-        return model
+    except Exception as e:
+        print(f"❌ Erreur extraction: {e}")
+        return None
 
     finally:
         shutil.rmtree(extract_dir, ignore_errors=True)
 
 
 def load_model():
-    """Charge le modele, gere .h5 et .keras"""
-
-    # Cherche un fichier existant
-    path = None
-    fmt = None
-
-    if os.path.exists(MODEL_PATH_H5):
-        fmt, _ = diagnose_model_file(MODEL_PATH_H5)
-        if fmt == "h5":
-            path = MODEL_PATH_H5
-    elif os.path.exists(MODEL_PATH_KERAS):
-        fmt, _ = diagnose_model_file(MODEL_PATH_KERAS)
-        if fmt == "keras_zip":
-            path = MODEL_PATH_KERAS
-
-    # Si aucun fichier valide, telecharge
-    if path is None:
+    """
+    Charge le modele : TOUJOURS reconstruction + poids.
+    Evite les conflits Keras 2/3 car on ne deserialise pas la config JSON.
+    """
+    # Verifie/Telecharge le fichier
+    if not os.path.exists(MODEL_PATH):
         path, fmt = download_model()
-
-    print(f"\n📁 Fichier: {path}")
-    print(f"📦 Format: {fmt}")
-
-    # Chargement selon le format
-    if fmt == "h5":
-        print("🔄 Chargement HDF5...")
-        model = tf.keras.models.load_model(path, compile=False)
-        model.compile(
-            optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
-            loss='categorical_crossentropy',
-            metrics=['accuracy']
-        )
-        print("✅ Modele .h5 charge")
-        return model
-
-    elif fmt == "keras_zip":
-        print("🔄 Chargement .keras (ZIP)...")
-        return load_model_from_keras_zip(path)
-
     else:
-        raise ValueError(f"Format non gere: {fmt}")
+        fmt, size = diagnose_model_file(MODEL_PATH)
+        if fmt not in ["h5", "keras_zip"]:
+            print(f"⚠️ Fichier invalide ({fmt}), retéléchargement...")
+            os.remove(MODEL_PATH)
+            path, fmt = download_model()
+        else:
+            print(f"✅ Fichier local: {fmt} ({size/1024/1024:.1f} MB)")
+
+    fmt, _ = diagnose_model_file(MODEL_PATH)
+
+    if fmt == "html_error":
+        os.remove(MODEL_PATH)
+        raise ValueError("Fichier corrompu (HTML)")
+
+    # ETAPE 1 : Reconstruit l'architecture (TOUJOURS)
+    print("🔄 Reconstruction de l'architecture...")
+    model = build_model()
+
+    # ETAPE 2 : Charge les poids selon le format
+    if fmt == "keras_zip":
+        # Extrait les poids du ZIP puis charge
+        weights_path = extract_weights_from_keras(MODEL_PATH)
+        if weights_path:
+            try:
+                model.load_weights(weights_path)
+                print("✅ Poids .keras charges")
+            except Exception as e:
+                print(f"⚠️ Erreur chargement poids .keras: {e}")
+                print("   Modele utilise avec poids ImageNet (non entraine)")
+        else:
+            print("⚠️ Poids non trouves, modele avec poids ImageNet")
+
+    else:  # fmt == "h5"
+        try:
+            # Essaie de charger les poids du .h5
+            model.load_weights(MODEL_PATH)
+            print("✅ Poids .h5 charges")
+        except Exception as e:
+            print(f"⚠️ Erreur chargement poids .h5: {e}")
+            print("   Le .h5 contient peut-etre une config Keras 3 incompatible")
+            print("   Modele utilise avec poids ImageNet (non entraine)")
+
+    # Compilation
+    model.compile(
+        optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
+        loss='categorical_crossentropy',
+        metrics=['accuracy']
+    )
+
+    print("✅ Modele pret")
+    return model

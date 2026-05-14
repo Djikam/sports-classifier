@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Crée le dossier models (vide au départ)
+# Crée le dossier models (VIDE au départ)
 RUN mkdir -p models
 
 # Copie du code source
